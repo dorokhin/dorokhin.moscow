@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Бимодальное распределение заказов OZON</title>
+  <!-- Bootstrap 5 CSS (latest) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Custom CSS with lighter grey and blue gradients -->
+  <style>
+    /* Overall page styling */
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #f7f9fc, #e2ebf5);
+      color: #333;
+      padding-bottom: 40px;
+    }
+    h1, h2 {
+      font-weight: 500;
+      color: #dfe0ee;
+    }
+    /* Header card with blue gradient */
+    .gradient-header {
+      background: linear-gradient(135deg, #3f51b5, #1a237e);
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      text-align: center;
+      color: #fff;
+    }
+    /* Card styling */
+    .card {
+      background-color: #f0f4f8;
+      border: none;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    .card-header {
+      background: linear-gradient(135deg, #64b5f6, #1e88e5);
+      color: #fff;
+      font-weight: 500;
+      border-top-left-radius: 8px;
+      border-top-right-radius: 8px;
+    }
+    /* Chart container with blue gradient */
+    #chart {
+      width: 100%;
+      height: 500px;
+      background: linear-gradient(135deg, #d0e3fc, #a6c8ff);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    /* Table styling */
+    table {
+      margin-top: 20px;
+    }
+    table thead th {
+      background-color: #90caf9;
+      color: #1a237e;
+    }
+    table tbody tr:nth-child(even) {
+      background-color: rgba(144, 202, 249, 0.2);
+    }
+    a {
+      color: #1e88e5;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    /* Custom styling for all form input fields */
+    .form-control {
+      background-color: #e3f2fd;
+      border: 1px solid #64b5f6;
+      color: #333;
+    }
+    .form-control:focus {
+      background-color: #d0e3fc;
+      border-color: #1e88e5;
+      box-shadow: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container my-4">
+    <div class="gradient-header rounded">
+      <h1>Бимодальное распределение заказов OZON</h1>
+      <p class="mb-0">Фильтрация и отображение</p>
+    </div>
+
+    <!-- Input Section -->
+    <div class="card mb-4">
+      <div class="card-header">Загрузка данных JSON</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label for="jsonText" class="form-label">Вставьте JSON:</label>
+          <textarea id="jsonText" class="form-control" rows="4" placeholder="Paste JSON data here..."></textarea>
+        </div>
+        <div class="mb-3">
+          <label for="jsonFile" class="form-label">Выберите JSON File:</label>
+          <input type="file" id="jsonFile" class="form-control" accept="application/json">
+        </div>
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label for="minPrice" class="form-label">Минимальная цена:</label>
+            <input type="number" id="minPrice" class="form-control" placeholder="0">
+          </div>
+          <div class="col-md-6">
+            <label for="maxPrice" class="form-label">Максимальная цена:</label>
+            <input type="number" id="maxPrice" class="form-control" placeholder="1 000 000">
+          </div>
+        </div>
+        <button id="processBtn" class="btn btn-primary">Обработать JSON</button>
+      </div>
+    </div>
+
+    <!-- Chart Section -->
+    <div class="card mb-4">
+      <div class="card-header">Гистограмма</div>
+      <div class="card-body">
+        <div id="chart"></div>
+      </div>
+    </div>
+
+    <!-- Orders in Selected Bin (placed under the chart) -->
+    <div class="card mb-4">
+      <div class="card-header">Заказы в выбранном столбце</div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table id="barOrdersTable" class="table table-hover">
+            <thead>
+              <tr>
+                <th>ID заказа</th>
+                <th>Дата</th>
+                <th>Цена</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Orders for the clicked bin will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filtered Orders Table -->
+    <div class="card mb-4">
+      <div class="card-header">Отфильтрованные заказы</div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table id="ordersTable" class="table table-hover">
+            <thead>
+              <tr>
+                <th>ID заказа</th>
+                <th>Дата</th>
+                <th>Цена</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Filtered orders will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ECharts Library -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <!-- Bootstrap 5 Bundle with Popper -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Global variables to store filtered orders and histogram parameters
+    let currentFilteredOrders = [];
+    let currentHistMin = 0;
+    let currentBinWidth = 1;
+    let currentNumBins = 30;
+
+    // Get DOM elements
+    const jsonText = document.getElementById('jsonText');
+    const jsonFile = document.getElementById('jsonFile');
+    const processBtn = document.getElementById('processBtn');
+    const minPriceInput = document.getElementById('minPrice');
+    const maxPriceInput = document.getElementById('maxPrice');
+    const ordersTableBody = document.getElementById('ordersTable').querySelector('tbody');
+    const barOrdersTableBody = document.getElementById('barOrdersTable').querySelector('tbody');
+
+    // Initialize the ECharts instance
+    let chart = echarts.init(document.getElementById('chart'));
+
+    processBtn.addEventListener('click', () => {
+      if (jsonFile.files && jsonFile.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          try {
+            const data = JSON.parse(e.target.result);
+            processJSON(data);
+          } catch (err) {
+            alert("Error parsing JSON file: " + err);
+          }
+        };
+        reader.readAsText(jsonFile.files[0]);
+      } else if (jsonText.value.trim()) {
+        try {
+          const data = JSON.parse(jsonText.value);
+          processJSON(data);
+        } catch (err) {
+          alert("Error parsing JSON text: " + err);
+        }
+      } else {
+        alert("Please paste JSON or select a JSON file.");
+      }
+    });
+
+    function processJSON(data) {
+      if (!data.orders || !Array.isArray(data.orders)) {
+        alert("Invalid JSON format: missing 'orders' array.");
+        return;
+      }
+
+      // Get orders with valid numeric prices
+      let orders = data.orders.filter(o => typeof o.price === 'number');
+
+      // Get price filter values (if provided)
+      const minPrice = minPriceInput.value !== '' ? Number(minPriceInput.value) : -Infinity;
+      const maxPrice = maxPriceInput.value !== '' ? Number(maxPriceInput.value) : Infinity;
+
+      // Filter orders based on user-provided price range
+      const filteredOrders = orders.filter(o => o.price >= minPrice && o.price <= maxPrice);
+      currentFilteredOrders = filteredOrders; // store globally for click events
+
+      // Update the table of filtered orders
+      updateOrdersTable(filteredOrders);
+
+      // Use the 95th percentile (if provided) to limit high outliers when drawing histogram
+      let maxDisplay = Math.max(...orders.map(o => o.price));
+      if (data.percentiles && data.percentiles["95th"]) {
+        const p95 = Number(data.percentiles["95th"]);
+        if (p95 < maxDisplay) {
+          maxDisplay = p95;
+        }
+      }
+
+      // For the histogram, use only the filtered orders
+      const prices = filteredOrders.map(o => o.price);
+      if (prices.length === 0) {
+        alert("No orders found in the selected price range.");
+        chart.clear();
+        return;
+      }
+
+      // Determine histogram range based on filtered prices and maxDisplay cap
+      const histMin = Math.min(...prices);
+      // Use the lower of maxDisplay and actual maximum in filtered orders
+      const histMax = Math.min(maxDisplay, Math.max(...prices));
+      currentHistMin = histMin;
+
+      // Compute histogram data using a fixed number of bins
+      currentNumBins = 30;
+      currentBinWidth = (histMax - histMin) / currentNumBins || 1;
+
+      let bins = new Array(currentNumBins).fill(0);
+      let binLabels = [];
+      for (let i = 0; i < currentNumBins; i++) {
+        let label = (histMin + i * currentBinWidth).toFixed(2);
+        binLabels.push(label);
+      }
+
+      prices.forEach(price => {
+        let bin = Math.floor((price - histMin) / currentBinWidth);
+        if (bin >= currentNumBins) bin = currentNumBins - 1;
+        bins[bin]++;
+      });
+
+      // Prepare mark lines for median and selected percentiles if available
+      let markLines = [];
+      if (data.medianPrice) {
+        markLines.push({
+          name: 'Median',
+          xAxis: Number(data.medianPrice)
+        });
+      }
+      if (data.percentiles) {
+        if (data.percentiles["10th"]) {
+          markLines.push({
+            name: '10th',
+            xAxis: Number(data.percentiles["10th"])
+          });
+        }
+        if (data.percentiles["90th"]) {
+          markLines.push({
+            name: '90th',
+            xAxis: Number(data.percentiles["90th"])
+          });
+        }
+      }
+
+      // Configure the chart option for ECharts
+      const option = {
+        title: {
+          text: 'Histogram of Filtered Order Prices',
+          left: 'center',
+          textStyle: { color: '#1a237e' }
+        },
+        tooltip: {
+          trigger: 'axis'
+        },
+        xAxis: {
+          type: 'category',
+          name: 'Price',
+          data: binLabels,
+          boundaryGap: true,
+          axisLine: { lineStyle: { color: '#1a237e' } },
+          axisLabel: {
+            formatter: function(value, index) {
+              const total = binLabels.length;
+              return index % Math.ceil(total / 10) === 0 ? value : '';
+            }
+          }
+        },
+        yAxis: {
+          type: 'value',
+          name: 'Count',
+          axisLine: { lineStyle: { color: '#1a237e' } }
+        },
+        series: [{
+          name: 'Orders',
+          type: 'bar',
+          data: bins,
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: '#64b5f6' },
+              { offset: 1, color: '#1e88e5' }
+            ])
+          },
+          markLine: {
+            symbol: 'none',
+            data: markLines,
+            label: {
+              formatter: '{b}',
+              position: 'insideEndTop'
+            },
+            lineStyle: {
+              color: '#ff6666',
+              type: 'dashed'
+            }
+          }
+        }]
+      };
+
+      // Render the chart
+      chart.setOption(option);
+
+      // Remove any previous click handler to avoid duplicates
+      chart.off('click');
+
+      // Add click event on the chart bars to display orders for that bin
+      chart.on('click', function (params) {
+        if (params.componentType === 'series' && params.seriesType === 'bar') {
+          const binIndex = params.dataIndex;
+          const lowerBound = currentHistMin + binIndex * currentBinWidth;
+          // For the last bin, include orders equal to the upper bound
+          const upperBound = binIndex === currentNumBins - 1 ? Infinity : lowerBound + currentBinWidth;
+          const ordersInBin = currentFilteredOrders.filter(o => o.price >= lowerBound && o.price < upperBound);
+          updateBarOrdersTable(ordersInBin, lowerBound, lowerBound + currentBinWidth);
+        }
+      });
+    }
+
+    // Function to update the table of filtered orders
+    function updateOrdersTable(orders) {
+      ordersTableBody.innerHTML = '';
+      orders.forEach(order => {
+        const row = document.createElement('tr');
+        const cellOrder = document.createElement('td');
+        // Create a link for the order id
+        const link = document.createElement('a');
+        link.href = "https://www.ozon.ru/my/orderdetails/?order=" + encodeURIComponent(order.order);
+        link.textContent = order.order || 'N/A';
+        link.target = "_blank";
+        cellOrder.appendChild(link);
+
+        const cellDate = document.createElement('td');
+        cellDate.textContent = order.date || 'N/A';
+        const cellPrice = document.createElement('td');
+        cellPrice.textContent = order.price;
+        row.appendChild(cellOrder);
+        row.appendChild(cellDate);
+        row.appendChild(cellPrice);
+        ordersTableBody.appendChild(row);
+      });
+    }
+
+    // Function to update the table showing orders for the clicked histogram bin
+    function updateBarOrdersTable(orders, lowerBound, upperBound) {
+      barOrdersTableBody.innerHTML = '';
+      orders.forEach(order => {
+        const row = document.createElement('tr');
+        const cellOrder = document.createElement('td');
+        // Create a link for the order id
+        const link = document.createElement('a');
+        link.href = "https://www.ozon.ru/my/orderdetails/?order=" + encodeURIComponent(order.order);
+        link.textContent = order.order || 'N/A';
+        link.target = "_blank";
+        cellOrder.appendChild(link);
+
+        const cellDate = document.createElement('td');
+        cellDate.textContent = order.date || 'N/A';
+        const cellPrice = document.createElement('td');
+        cellPrice.textContent = order.price;
+        row.appendChild(cellOrder);
+        row.appendChild(cellDate);
+        row.appendChild(cellPrice);
+        barOrdersTableBody.appendChild(row);
+      });
+    }
+  </script>
+</body>
+</html>
